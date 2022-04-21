@@ -1,37 +1,11 @@
 import asyncio
 import logging
 import websockets
-from datetime import datetime
-
-from ocpp.routing import on
-from ocpp.v20 import ChargePoint as cp
-from ocpp.v20 import call_result
 
 import settings
+from charge_point_handler import ChargePointHandler
 
 logging.basicConfig(level=logging.INFO)
-
-
-class ChargePoint(cp):
-    @on("BootNotification")
-    async def on_boot_notification(self, charging_station, reason, **kwargs):
-        return call_result.BootNotificationPayload(
-            current_time=datetime.utcnow().isoformat(),
-            interval=20,
-            status="Accepted"
-        )
-
-    @on("Heartbeat")
-    async def on_heartbeat(self):
-        print("Got a heartbeat")
-        return call_result.HeartbeatPayload(
-            current_time=f"{datetime.utcnow():%Y-%m-%dT%H:%M:%S}Z"
-        )
-
-    @on("TransactionEvent")
-    async def on_transaction_event(self, **kwargs):
-        print("Transaction event")
-        return call_result.TransactionEventPayload()
 
 
 async def on_connect(websocket, path):
@@ -41,6 +15,7 @@ async def on_connect(websocket, path):
         requested_protocols = websocket.request_headers["Sec-WebSocket-Protocol"]
     except KeyError:
         logging.info("Client hasn't requested any Subprotocol. Closing Connection")
+
     if websocket.subprotocol:
         logging.info(f"Protocols Matched: {websocket.subprotocol}", )
     else:
@@ -54,9 +29,17 @@ async def on_connect(websocket, path):
         return await websocket.close()
 
     charge_point_id = path.strip('/')
-    charge_point = ChargePoint(charge_point_id, websocket)
+    charge_point = ChargePointHandler(charge_point_id, websocket)
 
-    await charge_point.start()
+    try:
+        await asyncio.gather(
+            charge_point.start(),
+            charge_point.wait_for_command()
+        )
+    except websockets.exceptions.ConnectionClosedOK:
+        logging.info("Client just disconnected")
+    finally:
+        await websocket.close()
 
 
 async def main():

@@ -8,6 +8,7 @@ from ocpp.v20 import call
 from ocpp.v20 import ChargePoint
 
 import settings
+from io_handler import connect_stdin_stdout
 
 logging.basicConfig(level=logging.INFO)
 
@@ -47,6 +48,16 @@ class LocalChargePoint(ChargePoint):
             await self.send_transaction_started()
             await self.send_heartbeat(response.interval)
 
+    async def wait_for_command(self):
+        reader, writer = await connect_stdin_stdout()
+        while True:
+            res = await reader.readline()
+            res_str = res.decode().strip()
+            if not res:
+                break
+            if res_str == "st":
+                await self.send_transaction_started()
+
 
 async def main(station_name):
     async with websockets.connect(
@@ -54,7 +65,11 @@ async def main(station_name):
         subprotocols=[settings.PROTOCOL]
     ) as ws:
         charge_point = LocalChargePoint(station_name, ws)
-        await asyncio.gather(charge_point.start(), charge_point.send_boot_notification())
+        await asyncio.gather(
+            charge_point.start(),
+            charge_point.send_boot_notification(),
+            charge_point.wait_for_command()
+        )
 
 
 @click.group()

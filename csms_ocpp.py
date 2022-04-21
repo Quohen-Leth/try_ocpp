@@ -7,6 +7,8 @@ from ocpp.routing import on
 from ocpp.v20 import ChargePoint as cp
 from ocpp.v20 import call_result
 
+import settings
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -60,9 +62,9 @@ async def on_connect(websocket, path):
 async def main():
     server = await websockets.serve(
         on_connect,
-        "0.0.0.0",
-        9000,
-        subprotocols=["ocpp2.0"]
+        settings.HOST,
+        settings.PORT,
+        subprotocols=[settings.PROTOCOL]
     )
     logging.info("WebSocket Server Started listening to new connections...")
     await server.wait_closed()

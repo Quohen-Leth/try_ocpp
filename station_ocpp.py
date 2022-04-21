@@ -7,6 +7,8 @@ import click
 from ocpp.v20 import call
 from ocpp.v20 import ChargePoint
 
+import settings
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -46,12 +48,12 @@ class LocalChargePoint(ChargePoint):
             await self.send_heartbeat(response.interval)
 
 
-async def main():
+async def main(station_name):
     async with websockets.connect(
-        "ws://localhost:9000/CP_1",
-        subprotocols=["ocpp2.0"]
+        f"ws://{settings.HOST}:{settings.PORT}/{station_name}",
+        subprotocols=[settings.PROTOCOL]
     ) as ws:
-        charge_point = LocalChargePoint("CP_1", ws)
+        charge_point = LocalChargePoint(station_name, ws)
         await asyncio.gather(charge_point.start(), charge_point.send_boot_notification())
 
 
@@ -61,8 +63,9 @@ def cli():
 
 
 @cli.command()
-def start():
-    asyncio.run(main())
+@click.option("-n", "--station_name")
+def start(station_name):
+    asyncio.run(main(station_name))
 
 
 if __name__ == "__main__":

@@ -12,6 +12,31 @@ logging.basicConfig(level=logging.INFO)
 
 
 class ChargePointHandler(ChargePoint):
+    @on("Authorize")
+    async def on_authorize(self, **kwargs):
+        logging.info("Authorization")
+        return call_result.AuthorizePayload(
+            id_token_info={
+                "status": "Accepted"
+            },
+            certificate_status=None,
+            evse_id=None,
+        )
+
+    @on("GetBaseReport")
+    async def on_get_base_report(self, **kwargs):
+        logging.info("Base report")
+        return call_result.GetBaseReportPayload(
+            status="Accepted"
+        )
+
+    @on("GetReport")
+    async def on_get_report(self, **kwargs):
+        logging.info("Report")
+        return call_result.GetReportPayload(
+            status="Accepted"
+        )
+
     @on("BootNotification")
     async def on_boot_notification(self, charging_station, reason, **kwargs):
         return call_result.BootNotificationPayload(
@@ -31,6 +56,28 @@ class ChargePointHandler(ChargePoint):
     async def on_transaction_event(self, **kwargs):
         logging.info("Transaction event")
         return call_result.TransactionEventPayload()
+
+    async def send_authorization(self, **kwargs):
+        request = call.AuthorizePayload(
+            id_token={
+                "idToken": str(uuid.uuid4()),
+                "type": "Local"
+            },
+            _15118_certificate_hash_data=None,
+            evse_id=None,
+        )
+        await self.call(request)
+
+    async def send_get_base_report(self, **kwargs):
+        request = call.GetBaseReportPayload(
+            request_id=111,
+            report_base="SummaryInventory"
+        )
+        await self.call(request)
+
+    async def send_report(self):
+        request = call.GetReportPayload()
+        await self.call(request)
 
     async def send_boot_notification(self):
         request = call.BootNotificationPayload(
@@ -74,3 +121,9 @@ class ChargePointHandler(ChargePoint):
                 break
             if res_str == "st":
                 await self.send_transaction_started()
+            elif res_str == "br":
+                await self.send_get_base_report()
+            elif res_str == "au":
+                await self.send_authorization()
+            elif res_str == "rr":
+                await self.send_report()

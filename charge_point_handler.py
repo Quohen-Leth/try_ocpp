@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 
 from ocpp.routing import on
-from ocpp.v20 import call, call_result, ChargePoint
+from ocpp.v201 import call, call_result, ChargePoint
+from ocpp.v201.enums import Action
 
 from io_handler import connect_stdin_stdout
 
@@ -12,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 class ChargePointHandler(ChargePoint):
-    @on("Authorize")
+    @on(Action.Authorize)
     async def on_authorize(self, **kwargs):
         logging.info("Authorization")
         return call_result.AuthorizePayload(
@@ -20,24 +21,23 @@ class ChargePointHandler(ChargePoint):
                 "status": "Accepted"
             },
             certificate_status=None,
-            evse_id=None,
         )
 
-    @on("GetBaseReport")
+    @on(Action.GetBaseReport)
     async def on_get_base_report(self, **kwargs):
         logging.info("Base report")
         return call_result.GetBaseReportPayload(
             status="Accepted"
         )
 
-    @on("GetReport")
+    @on(Action.GetReport)
     async def on_get_report(self, **kwargs):
         logging.info("Report")
         return call_result.GetReportPayload(
             status="Accepted"
         )
 
-    @on("BootNotification")
+    @on(Action.BootNotification)
     async def on_boot_notification(self, charging_station, reason, **kwargs):
         return call_result.BootNotificationPayload(
             current_time=datetime.utcnow().isoformat(),
@@ -45,26 +45,26 @@ class ChargePointHandler(ChargePoint):
             status="Accepted"
         )
 
-    @on("Heartbeat")
+    @on(Action.Heartbeat)
     async def on_heartbeat(self):
         logging.info("Got a heartbeat")
         return call_result.HeartbeatPayload(
             current_time=f"{datetime.utcnow():%Y-%m-%dT%H:%M:%S}Z"
         )
 
-    @on("TransactionEvent")
+    @on(Action.TransactionEvent)
     async def on_transaction_event(self, **kwargs):
         logging.info("Transaction event")
-        return call_result.TransactionEventPayload()
+        return call_result.TransactionEventPayload(
+            charging_priority=0
+        )
 
     async def send_authorization(self, **kwargs):
         request = call.AuthorizePayload(
             id_token={
                 "idToken": str(uuid.uuid4()),
                 "type": "Local"
-            },
-            _15118_certificate_hash_data=None,
-            evse_id=None,
+            }
         )
         await self.call(request)
 
@@ -76,7 +76,9 @@ class ChargePointHandler(ChargePoint):
         await self.call(request)
 
     async def send_report(self):
-        request = call.GetReportPayload()
+        request = call.GetReportPayload(
+            request_id=0
+        )
         await self.call(request)
 
     async def send_boot_notification(self):
@@ -106,8 +108,8 @@ class ChargePointHandler(ChargePoint):
             timestamp=f"{datetime.utcnow():%Y-%m-%dT%H:%M:%S}Z",
             trigger_reason="Authorized",
             seq_no=1,
-            transaction_data={
-                "id": str(uuid.uuid4())
+            transaction_info={
+                "transactionId": str(uuid.uuid4())
             },
         )
         await self.call(request)

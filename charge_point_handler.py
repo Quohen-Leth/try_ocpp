@@ -5,7 +5,7 @@ from datetime import datetime
 
 from ocpp.routing import on
 from ocpp.v201 import call, call_result, ChargePoint
-from ocpp.v201.enums import Action
+from ocpp.v201 import enums
 
 from io_handler import connect_stdin_stdout
 
@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 class ChargePointHandler(ChargePoint):
-    @on(Action.Authorize)
+    @on(enums.Action.Authorize)
     async def on_authorize(self, **kwargs):
         logging.info("Authorization")
         return call_result.AuthorizePayload(
@@ -23,21 +23,21 @@ class ChargePointHandler(ChargePoint):
             certificate_status=None,
         )
 
-    @on(Action.GetBaseReport)
+    @on(enums.Action.GetBaseReport)
     async def on_get_base_report(self, **kwargs):
         logging.info("Base report")
         return call_result.GetBaseReportPayload(
             status="Accepted"
         )
 
-    @on(Action.GetReport)
+    @on(enums.Action.GetReport)
     async def on_get_report(self, **kwargs):
         logging.info("Report")
         return call_result.GetReportPayload(
             status="Accepted"
         )
 
-    @on(Action.BootNotification)
+    @on(enums.Action.BootNotification)
     async def on_boot_notification(self, charging_station, reason, **kwargs):
         return call_result.BootNotificationPayload(
             current_time=datetime.utcnow().isoformat(),
@@ -45,18 +45,32 @@ class ChargePointHandler(ChargePoint):
             status="Accepted"
         )
 
-    @on(Action.Heartbeat)
+    @on(enums.Action.Heartbeat)
     async def on_heartbeat(self):
         logging.info("Got a heartbeat")
         return call_result.HeartbeatPayload(
             current_time=f"{datetime.utcnow():%Y-%m-%dT%H:%M:%S}Z"
         )
 
-    @on(Action.TransactionEvent)
+    @on(enums.Action.TransactionEvent)
     async def on_transaction_event(self, **kwargs):
         logging.info("Transaction event")
         return call_result.TransactionEventPayload(
             charging_priority=0
+        )
+
+    @on(enums.Action.RequestStartTransaction)
+    async def on_request_start_transaction(self, **kwargs):
+        logging.info("Transaction Start Requested")
+        return call_result.RequestStartTransactionPayload(
+            status=enums.RequestStartStopStatusType.accepted
+        )
+
+    @on(enums.Action.RequestStopTransaction)
+    async def on_request_stop_transaction(self, **kwargs):
+        logging.info("Transaction Stop Requested")
+        return call_result.RequestStopTransactionPayload(
+            status=enums.RequestStartStopStatusType.accepted
         )
 
     async def send_authorization(self, **kwargs):
@@ -73,7 +87,7 @@ class ChargePointHandler(ChargePoint):
             request_id=111,
             report_base="SummaryInventory"
         )
-        await self.call(request)
+        return await self.call(request)
 
     async def send_report(self):
         request = call.GetReportPayload(
@@ -102,7 +116,7 @@ class ChargePointHandler(ChargePoint):
             await self.call(request)
             await asyncio.sleep(interval)
 
-    async def send_transaction_started(self):
+    async def send_transaction_event(self):
         request = call.TransactionEventPayload(
             event_type="Started",
             timestamp=f"{datetime.utcnow():%Y-%m-%dT%H:%M:%S}Z",
@@ -112,7 +126,23 @@ class ChargePointHandler(ChargePoint):
                 "transactionId": str(uuid.uuid4())
             },
         )
-        await self.call(request)
+        return await self.call(request)
+
+    async def request_transaction_start(self):
+        request = call.RequestStartTransactionPayload(
+            id_token={
+                "idToken": str(uuid.uuid4()),
+                "type": enums.IdTokenType.central
+            },
+            remote_start_id=0
+        )
+        return await self.call(request)
+
+    async def request_transaction_stop(self):
+        request = call.RequestStopTransactionPayload(
+            transaction_id=str(uuid.uuid4())
+        )
+        return await self.call(request)
 
     async def wait_for_command(self):
         reader, writer = await connect_stdin_stdout()
@@ -121,8 +151,12 @@ class ChargePointHandler(ChargePoint):
             res_str = res.decode().strip()
             if not res:
                 break
-            if res_str == "st":
-                await self.send_transaction_started()
+            if res_str == "te":
+                await self.send_transaction_event()
+            elif res_str == "sr":
+                await self.request_transaction_start()
+            elif res_str == "sp":
+                await self.request_transaction_stop()
             elif res_str == "br":
                 await self.send_get_base_report()
             elif res_str == "au":

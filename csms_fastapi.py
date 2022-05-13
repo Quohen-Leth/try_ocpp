@@ -1,13 +1,12 @@
 import logging
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, WebSocket
+from pydantic import BaseModel
 
 import settings
 from charge_point_handler import ChargePointHandler
 from central_system_handler import central_system
-
-# TODO: differentiate websocket server and http server with FastAPI background tasks
 
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
@@ -37,6 +36,10 @@ async def websocket_endpoint(
     await queue.get()
 
 
+class MinModel(BaseModel):
+    cp_id: str
+
+
 @app.get("/")
 async def view_chargers():
     response = await central_system.view_chargers()
@@ -44,21 +47,18 @@ async def view_chargers():
 
 
 @app.post("/base-report")
-async def get_base_report(request: Request):
-    data = await request.json()
-    return await central_system.get_base_report(data["cp_id"])
+async def get_base_report(data: MinModel):
+    return await central_system.get_base_report(data.cp_id)
 
 
 @app.post("/start-transaction")
-async def start_transaction(request: Request):
-    data = await request.json()
-    return await central_system.start_transaction(data["cp_id"])
+async def start_transaction(data: MinModel):
+    return await central_system.start_transaction(data.cp_id)
 
 
 @app.post("/stop-transaction")
-async def stop_transaction(request: Request):
-    data = await request.json()
-    return await central_system.stop_transaction(data["cp_id"])
+async def stop_transaction(data: MinModel):
+    return await central_system.stop_transaction(data.cp_id)
 
 
 if __name__ == '__main__':
